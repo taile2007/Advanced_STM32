@@ -65,7 +65,7 @@ void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_ADC1_Init(void);
 static void MX_USART2_UART_Init(void);
-static void MX_TIM2_Init(void);
+static void MX_TIM2_Init(uint16_t SPS);
 
 
 /* USER CODE BEGIN PFP */
@@ -84,7 +84,7 @@ int _write(int file, char *ptr, int len)
 }
 
 uint16_t adcValue;
-uint8_t Rx_data;
+uint8_t Rx_data[10];
 int sum=0;
 int count = 0;
 /***********Task handler***************/
@@ -101,10 +101,10 @@ xQueueHandle St_Queue_Handler;
 
 typedef struct {
 	char *str;
-	int counter;
-	uint16_t large_value;
+	uint16_t sampling_rate;
 } my_struct;
 
+my_struct *ptrtostruct;
 /***************Task function****************/
 //void ADC_Queue_Task (void* argument);
 void Data_Processing_Task (void* argument);
@@ -141,12 +141,14 @@ int main(void)
   MX_GPIO_Init();
   MX_ADC1_Init();
   MX_USART2_UART_Init();
-  MX_TIM2_Init();
+  MX_TIM2_Init(1000);
   /* USER CODE BEGIN 2 */
+
+
 
   HAL_TIM_Base_Start(&htim2);
   HAL_ADC_Start_IT(&hadc1);
-
+  HAL_UART_Receive_IT(&huart2, Rx_data, 10);
 
   /************************* Create Integer Queue ****************************/
   SimpleQueue = xQueueCreate(5, sizeof (int));
@@ -181,7 +183,7 @@ int main(void)
   //xTaskCreate(ADC_Queue_Task, "ADC_Queue",  128, NULL, 3, &ADC_Queue_Handler);
   xTaskCreate(Data_Processing_Task, "DSP", 128, NULL, 3, &Data_Processing_Handler);
 
-  HAL_UART_Receive_IT(&huart2, &Rx_data, 1);
+
 
   vTaskStartScheduler();
   /* USER CODE END 2 */
@@ -296,7 +298,7 @@ static void MX_ADC1_Init(void)
   * @param None
   * @retval None
   */
-static void MX_TIM2_Init(void)
+static void MX_TIM2_Init(uint16_t SPS)
 {
 
   /* USER CODE BEGIN TIM2_Init 0 */
@@ -313,7 +315,7 @@ static void MX_TIM2_Init(void)
   htim2.Instance = TIM2;
   htim2.Init.Prescaler = 50000;
   htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
-  htim2.Init.Period = 100;
+  htim2.Init.Period = SPS; //SPS = 100 --> 100ms,
   htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
   htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
   if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
@@ -426,13 +428,13 @@ void ADC_Queue_Task (void* argument)
 	}
 }
 */
+
 /*
- *
- * // ADC Conversion to read temperature sensor
-  // Temperature (in °C) = ((Vsense – V25) / Avg_Slope) + 25
-  // Vense = Voltage Reading From Temperature Sensor
-  // V25 = Voltage at 25°C, for STM32F407 = 0.76V
-  // Avg_Slope = 2.5mV/°C
+ * ADC Conversion to read temperature sensor
+ * Temperature (in °C) = ((Vsense – V25) / Avg_Slope) + 25
+ * Vense = Voltage Reading From Temperature Sensor
+ * V25 = Voltage at 25°C, for STM32F407 = 0.76V
+ * Avg_Slope = 2.5mV/°C
  */
 
 void Data_Processing_Task (void* argument)
@@ -474,7 +476,6 @@ void Data_Processing_Task (void* argument)
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
-	char str[100];
   /* Prevent unused argument(s) compilation warning */
   UNUSED(hadc);
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
@@ -496,6 +497,45 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 
 }
 
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+	HAL_UART_Receive_IT(huart, Rx_data, 10); //restart the interrupt reception mode
+
+	 /* The xHigherPriorityTaskWoken parameter must be initialized to pdFALSE as
+	 it will get set to pdTRUE inside the interrupt safe API function if a
+	 context switch is required. */
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
+	/*****************Extract character received from Rx_data*******************/
+	// Extract the first token
+	   char * token = strtok(Rx_data, " ");
+	   // loop through the string to extract all other tokens
+	   while( token != NULL ) {
+		  printf( " %s\n", token ); //printing each token
+		  token = strtok(NULL, " ");
+	   }
+
+	/*****************ALOOCATE MEMORY TO THE PTR *******************************/
+	ptrtostruct = pvPortMalloc(sizeof (my_struct));
+
+	/********** LOAD THE DATA ***********/
+	ptrtostruct->str = token[0];
+	ptrtostruct->sampling_rate = (uint16_t)token[1];
+
+	if (xQueueSendToFrontFromISR(SimpleQueue, &ptrtostruct, &xHigherPriorityTaskWoken) == pdPASS)
+	{
+		HAL_UART_Transmit(huart, (uint8_t *)"\n\nSent from ISR\n\n", 17, 500);
+	}
+
+	/* Pass the xHigherPriorityTaskWoken value into portEND_SWITCHING_ISR(). If
+	 xHigherPriorityTaskWoken was set to pdTRUE inside xSemaphoreGiveFromISR()
+	 then calling portEND_SWITCHING_ISR() will request a context switch. If
+	 xHigherPriorityTaskWoken is still pdFALSE then calling
+	 portEND_SWITCHING_ISR() will have no effect */
+
+	portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
+}
 /* USER CODE END 4 */
 
 
