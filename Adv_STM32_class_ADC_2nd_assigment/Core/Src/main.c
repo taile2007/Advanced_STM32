@@ -84,6 +84,7 @@ int _write(int file, char *ptr, int len)
 }
 
 uint16_t adcValue;
+uint8_t Rx_data;
 int sum=0;
 int count = 0;
 /***********Task handler***************/
@@ -94,8 +95,18 @@ xTaskHandle Data_Processing_Handler;
 /************Queue handler ******************/
 xQueueHandle SimpleQueue;
 
+xQueueHandle St_Queue_Handler;
+
+/**************** STRUCTURE DEFINITION *****************/
+
+typedef struct {
+	char *str;
+	int counter;
+	uint16_t large_value;
+} my_struct;
+
 /***************Task function****************/
-void ADC_Queue_Task (void* argument);
+//void ADC_Queue_Task (void* argument);
 void Data_Processing_Task (void* argument);
 
 /* USER CODE END 0 */
@@ -152,10 +163,25 @@ int main(void)
 	  printf("Integer Queue Created successfully\n\n");
   }
 
-  /****************************** Task related******************************/
-  xTaskCreate(ADC_Queue_Task, "ADC_Queue",  128, NULL, 3, &ADC_Queue_Handler);
-  xTaskCreate(Data_Processing_Task, "DSP", 128, NULL, 2, &Data_Processing_Handler);
+  /************************** create ST QUEUE **********************************/
+  St_Queue_Handler = xQueueCreate(2, sizeof (my_struct));
 
+  if (St_Queue_Handler == 0) // if there is some error while creating queue
+	{
+	  char *str = "Unable to create STRUCTURE Queue\n\n";
+	  HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen (str), HAL_MAX_DELAY);
+	}
+  else
+	{
+	  char *str = "STRUCTURE Queue Created successfully\n\n";
+	  HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen (str), HAL_MAX_DELAY);
+	}
+
+  /****************************** Task related******************************/
+  //xTaskCreate(ADC_Queue_Task, "ADC_Queue",  128, NULL, 3, &ADC_Queue_Handler);
+  xTaskCreate(Data_Processing_Task, "DSP", 128, NULL, 3, &Data_Processing_Handler);
+
+  HAL_UART_Receive_IT(&huart2, &Rx_data, 1);
 
   vTaskStartScheduler();
   /* USER CODE END 2 */
@@ -383,22 +409,23 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-
+/*
 void ADC_Queue_Task (void* argument)
 {
 	uint32_t TickDelay = pdMS_TO_TICKS(50); // check this delay
+	//char str[100];
 	while (1)
 	{
 		if (xQueueSend(SimpleQueue, &adcValue, portMAX_DELAY) == pdPASS)
 		{
-//			char *str2 = " Successfully sent the number to the queue\nLeaving SENDER_HPT Task\n\n\n";
-//			HAL_UART_Transmit(&huart2, (uint8_t *)str2, strlen (str2), HAL_MAX_DELAY);
+//			sprintf(str, "Successfully sent number %d to the queue\n\n", adcValue);
+//			HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen (str), HAL_MAX_DELAY);
 			printf("Successfully sent number %d to the queue\n\n", adcValue);
 		}
 		vTaskDelay(TickDelay);
 	}
 }
-
+*/
 /*
  *
  * // ADC Conversion to read temperature sensor
@@ -447,13 +474,25 @@ void Data_Processing_Task (void* argument)
 
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
+	char str[100];
   /* Prevent unused argument(s) compilation warning */
   UNUSED(hadc);
+  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
   /* NOTE : This function Should not be modified, when the callback is needed,
             the HAL_ADC_ConvCpltCallback could be implemented in the user file
    */
-  adcValue = HAL_ADC_GetValue(&hadc1);
+
   HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_12);
+  adcValue = HAL_ADC_GetValue(&hadc1);
+
+  if (xQueueSendToFrontFromISR(SimpleQueue, &adcValue, &xHigherPriorityTaskWoken) == pdPASS)
+  {
+//			sprintf(str, "Successfully sent number %d to the queue\n\n", adcValue);
+//			HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen (str), HAL_MAX_DELAY);
+	printf("Successfully sent number %d to the queue\n\n", adcValue);
+  }
+// Did sending to the queue unblock a higher priority task?
+  portEND_SWITCHING_ISR( xHigherPriorityTaskWoken );
 
 }
 

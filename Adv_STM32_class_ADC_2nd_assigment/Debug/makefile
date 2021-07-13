@@ -65,8 +65,8 @@ all: main-build
 main-build: Adv_STM32_class_ADC_2nd_assigment.elf secondary-outputs
 
 # Tool invocations
-Adv_STM32_class_ADC_2nd_assigment.elf: $(OBJS) $(USER_OBJS) D:\PROJECT_PROGRAM\STM32CubeIDE\Adv_STM32_class_ADC_2nd_assigment\STM32F407VGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "Adv_STM32_class_ADC_2nd_assigment.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"D:\PROJECT_PROGRAM\STM32CubeIDE\Adv_STM32_class_ADC_2nd_assigment\STM32F407VGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Adv_STM32_class_ADC_2nd_assigment.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
+Adv_STM32_class_ADC_2nd_assigment.elf: $(OBJS) $(USER_OBJS) D:\PROJECT_PROGRAM\STM32CubeIDE\Advanced_STM32\Adv_STM32_class_ADC_2nd_assigment\STM32F407VGTX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "Adv_STM32_class_ADC_2nd_assigment.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"D:\PROJECT_PROGRAM\STM32CubeIDE\Advanced_STM32\Adv_STM32_class_ADC_2nd_assigment\STM32F407VGTX_FLASH.ld" --specs=nosys.specs -Wl,-Map="Adv_STM32_class_ADC_2nd_assigment.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -u _printf_float -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
