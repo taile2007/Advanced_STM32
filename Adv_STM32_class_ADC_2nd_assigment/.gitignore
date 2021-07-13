@@ -42,6 +42,8 @@
 *.idb
 *.pdb
 
+*.bin
+*.list
 *.xml
 
 # Kernel Module Compile Results
