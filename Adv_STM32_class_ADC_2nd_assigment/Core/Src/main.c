@@ -108,6 +108,7 @@ my_struct *ptrtostruct;
 /***************Task function****************/
 //void ADC_Queue_Task (void* argument);
 void Data_Processing_Task (void* argument);
+void subString(uint8_t input[], int pos, int length, uint8_t sub[]);
 
 /* USER CODE END 0 */
 
@@ -474,6 +475,19 @@ void Data_Processing_Task (void* argument)
 	}
 }
 
+
+void subString(uint8_t input[], int pos, int length, uint8_t sub[])
+{
+	int i = 0;
+	while (i < length) {
+	      sub[i] = input[pos + i - 1];
+	      i++;
+	   }
+	   sub[i] = '\0';
+
+}
+
+
 void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 {
   /* Prevent unused argument(s) compilation warning */
@@ -482,7 +496,6 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
   /* NOTE : This function Should not be modified, when the callback is needed,
             the HAL_ADC_ConvCpltCallback could be implemented in the user file
    */
-
   HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_12);
   adcValue = HAL_ADC_GetValue(&hadc1);
 
@@ -498,34 +511,36 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 }
 
 
+
 void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
 {
+	char str1[10];
+	char str2[10];
 	HAL_UART_Receive_IT(huart, Rx_data, 10); //restart the interrupt reception mode
 
+	subString(Rx_data, 2, 3, str1); // extract str value
+	subString(Rx_data, 7, 3, str2); // extract sampling_rate
 	 /* The xHigherPriorityTaskWoken parameter must be initialized to pdFALSE as
 	 it will get set to pdTRUE inside the interrupt safe API function if a
 	 context switch is required. */
 	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
 	/*****************Extract character received from Rx_data*******************/
-	// Extract the first token
-	   char * token = strtok(Rx_data, " ");
-	   // loop through the string to extract all other tokens
-	   while( token != NULL ) {
-		  printf( " %s\n", token ); //printing each token
-		  token = strtok(NULL, " ");
-	   }
+	printf("Str value: %s and sampling rate: %d \n\n", str1, atoi(str2));
 
 	/*****************ALOOCATE MEMORY TO THE PTR *******************************/
 	ptrtostruct = pvPortMalloc(sizeof (my_struct));
 
 	/********** LOAD THE DATA ***********/
-	ptrtostruct->str = token[0];
-	ptrtostruct->sampling_rate = (uint16_t)token[1];
+	ptrtostruct->str = str1;
+	ptrtostruct->sampling_rate = atoi(str2);
 
-	if (xQueueSendToFrontFromISR(SimpleQueue, &ptrtostruct, &xHigherPriorityTaskWoken) == pdPASS)
+	printf("QUEUE -- Str value: %s and sampling rate: %d \n\n", ptrtostruct->str, ptrtostruct->sampling_rate);
+
+	if (xQueueSendToFrontFromISR(St_Queue_Handler, &ptrtostruct, &xHigherPriorityTaskWoken) == pdPASS)
 	{
-		HAL_UART_Transmit(huart, (uint8_t *)"\n\nSent from ISR\n\n", 17, 500);
+		//HAL_UART_Transmit(huart, (uint8_t *)"\n\nSent from ISR\n\n", 17, 500);
+		printf("Sent from IRS of UART \n\n");
 	}
 
 	/* Pass the xHigherPriorityTaskWoken value into portEND_SWITCHING_ISR(). If
