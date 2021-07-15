@@ -84,16 +84,24 @@ int _write(int file, char *ptr, int len)
 }
 
 uint16_t adcValue;
-uint8_t Rx_data[10];
+uint8_t Rx_data[3];
 int sum=0;
 int count = 0;
+
+
+char str1[3];
+char str2[3];
+
+
 /***********Task handler***************/
-xTaskHandle ADC_Queue_Handler;
+xTaskHandle UART_Queue_Handler;
 xTaskHandle Data_Processing_Handler;
 
 
 /************Queue handler ******************/
 xQueueHandle SimpleQueue;
+
+xQueueHandle SimpleQueue_02;
 
 xQueueHandle St_Queue_Handler;
 
@@ -105,10 +113,12 @@ typedef struct {
 } my_struct;
 
 my_struct *ptrtostruct;
+
 /***************Task function****************/
-//void ADC_Queue_Task (void* argument);
+void UART_Queue_Task (void* argument);
 void Data_Processing_Task (void* argument);
 void subString(uint8_t input[], int pos, int length, uint8_t sub[]);
+void sendToQueue(void);
 
 /* USER CODE END 0 */
 
@@ -149,7 +159,7 @@ int main(void)
 
   HAL_TIM_Base_Start(&htim2);
   HAL_ADC_Start_IT(&hadc1);
-  HAL_UART_Receive_IT(&huart2, Rx_data, 10);
+  HAL_UART_Receive_IT(&huart2, &Rx_data, 9);
 
   /************************* Create Integer Queue ****************************/
   SimpleQueue = xQueueCreate(5, sizeof (int));
@@ -166,8 +176,25 @@ int main(void)
 	  printf("Integer Queue Created successfully\n\n");
   }
 
+
+  /************************* Create Integer Queue_02 ****************************/
+  SimpleQueue_02 = xQueueCreate(5, sizeof (int));
+  if (SimpleQueue_02 == 0)  // Queue not created
+  {
+//	  char *str = "Unable to create Integer Queue\n\n";
+//	  HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen (str), HAL_MAX_DELAY);
+	  printf("Unable to create Integer Queue\n\n");
+  }
+  else
+  {
+//	  char *str = "Integer Queue Created successfully\n\n";
+//	  HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen (str), HAL_MAX_DELAY);
+	  printf("Integer Queue Created successfully\n\n");
+  }
+
+
   /************************** create ST QUEUE **********************************/
-  St_Queue_Handler = xQueueCreate(2, sizeof (my_struct));
+  St_Queue_Handler = xQueueCreate(1, sizeof (my_struct));
 
   if (St_Queue_Handler == 0) // if there is some error while creating queue
 	{
@@ -181,8 +208,9 @@ int main(void)
 	}
 
   /****************************** Task related******************************/
-  //xTaskCreate(ADC_Queue_Task, "ADC_Queue",  128, NULL, 3, &ADC_Queue_Handler);
+
   xTaskCreate(Data_Processing_Task, "DSP", 128, NULL, 3, &Data_Processing_Handler);
+  xTaskCreate(UART_Queue_Task, "UART_Queue",  128, NULL, 2, &UART_Queue_Handler);
 
 
 
@@ -381,6 +409,7 @@ static void MX_USART2_UART_Init(void)
   }
   /* USER CODE BEGIN USART2_Init 2 */
 
+  HAL_UART_Receive_IT(&huart2, &Rx_data, 3); //restart the interrupt reception mode
   /* USER CODE END USART2_Init 2 */
 
 }
@@ -412,23 +441,28 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-/*
-void ADC_Queue_Task (void* argument)
+
+void UART_Queue_Task (void* argument)
 {
-	uint32_t TickDelay = pdMS_TO_TICKS(50); // check this delay
-	//char str[100];
+	my_struct *Rptrtostruct;
+	uint32_t TickDelay = pdMS_TO_TICKS(200); // check this delay
+	char *ptr;
 	while (1)
 	{
-		if (xQueueSend(SimpleQueue, &adcValue, portMAX_DELAY) == pdPASS)
+		if (xQueueReceive(SimpleQueue_02, &Rx_data, portMAX_DELAY) == pdPASS)
 		{
 //			sprintf(str, "Successfully sent number %d to the queue\n\n", adcValue);
 //			HAL_UART_Transmit(&huart2, (uint8_t *)str, strlen (str), HAL_MAX_DELAY);
-			printf("Successfully sent number %d to the queue\n\n", adcValue);
+			MX_TIM2_Init(atoi(Rx_data));
+			HAL_GPIO_TogglePin(GPIOD, GPIO_PIN_13);
+			printf("Enter UART_queue\n\n");
 		}
+
+		vPortFree(Rptrtostruct);  // free the structure memory
 		vTaskDelay(TickDelay);
 	}
 }
-*/
+
 
 /*
  * ADC Conversion to read temperature sensor
@@ -510,44 +544,50 @@ void HAL_ADC_ConvCpltCallback(ADC_HandleTypeDef* hadc)
 
 }
 
-
-
-void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+void sendToQueue(void)
 {
-	char str1[10];
-	char str2[10];
-	HAL_UART_Receive_IT(huart, Rx_data, 10); //restart the interrupt reception mode
-
 	subString(Rx_data, 2, 3, str1); // extract str value
 	subString(Rx_data, 7, 3, str2); // extract sampling_rate
-	 /* The xHigherPriorityTaskWoken parameter must be initialized to pdFALSE as
-	 it will get set to pdTRUE inside the interrupt safe API function if a
-	 context switch is required. */
-	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
 
 	/*****************Extract character received from Rx_data*******************/
 	printf("Str value: %s and sampling rate: %d \n\n", str1, atoi(str2));
 
 	/*****************ALOOCATE MEMORY TO THE PTR *******************************/
-	ptrtostruct = pvPortMalloc(sizeof (my_struct));
+	ptrtostruct = pvPortMalloc(10*sizeof (my_struct));
 
 	/********** LOAD THE DATA ***********/
 	ptrtostruct->str = str1;
 	ptrtostruct->sampling_rate = atoi(str2);
 
-	printf("QUEUE -- Str value: %s and sampling rate: %d \n\n", ptrtostruct->str, ptrtostruct->sampling_rate);
 
-	if (xQueueSendToFrontFromISR(St_Queue_Handler, &ptrtostruct, &xHigherPriorityTaskWoken) == pdPASS)
+
+}
+
+void HAL_UART_RxCpltCallback(UART_HandleTypeDef *huart)
+{
+
+	 /* The xHigherPriorityTaskWoken parameter must be initialized to pdFALSE as
+	 it will get set to pdTRUE inside the interrupt safe API function if a
+	 context switch is required. */
+
+	BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+
+	//printf("QUEUE -- Str value: %s and sampling rate: %d \n\n", ptrtostruct->str, ptrtostruct->sampling_rate);
+
+	if (xQueueSendFromISR(SimpleQueue_02, &Rx_data, &xHigherPriorityTaskWoken) == pdPASS)
 	{
 		//HAL_UART_Transmit(huart, (uint8_t *)"\n\nSent from ISR\n\n", 17, 500);
 		printf("Sent from IRS of UART \n\n");
 	}
+
 
 	/* Pass the xHigherPriorityTaskWoken value into portEND_SWITCHING_ISR(). If
 	 xHigherPriorityTaskWoken was set to pdTRUE inside xSemaphoreGiveFromISR()
 	 then calling portEND_SWITCHING_ISR() will request a context switch. If
 	 xHigherPriorityTaskWoken is still pdFALSE then calling
 	 portEND_SWITCHING_ISR() will have no effect */
+
+	HAL_UART_Receive_IT(&huart2, &Rx_data, 3); //restart the interrupt reception mode
 
 	portEND_SWITCHING_ISR(xHigherPriorityTaskWoken);
 }
